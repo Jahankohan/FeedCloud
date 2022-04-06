@@ -1,0 +1,121 @@
+version: "3"
+
+services:
+  rabbit:
+    image: rabbitmq:3.8-management-alpine
+    container_name: feedcloud_rabbit
+    hostname: rabbit
+    restart: on-failure
+
+  redis:
+    container_name: feedcloud_redis
+    hostname: redis
+    image: redis:6.2-alpine
+    restart: on-failure
+
+  postgres:
+    container_name: feedcloud_postgres
+    hostname: postgres
+    image: postgres:13-alpine
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=${DB_NAME}
+#    volumes:
+#      - postgresql-data:/var/lib/postgresql/data
+    restart: on-failure
+
+  feedcloud:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/feedcloud/Dockerfile
+    image: feedcloud
+    container_name: feedcloud
+    hostname: feedcloud
+    command: sh -c "python manage.py collectstatic --no-input && python manage.py migrate && gunicorn feedcloud.wsgi -b 0:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=feedcloud.settings.production
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - CACHE_HOST=${CACHE_HOST}
+      - CACHE_PORT=${CACHE_PORT}
+      - CACHE_DB=${CACHE_DB}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
+      - SENTRY_URL=${SENTRY_URL}
+      - RABBIT_HOST=${RABBIT_HOST}
+      - RABBIT_PORT=${RABBIT_PORT}
+    depends_on:
+      - rabbit
+      - postgres
+      - redis
+    expose:
+      - 8000
+    volumes:
+      - ./static/:/app/static
+    restart: on-failure
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/feedcloud/Dockerfile
+    image: feedcloud
+    container_name: feedcloud_worker
+    hostname: celery_worker
+    command: celery -A feedcloud worker -P gevent -c 20 -Q feeds,celery -l info
+    depends_on:
+      - rabbit
+      - postgres
+    environment:
+      - DJANGO_SETTINGS_MODULE=feedcloud.settings.production
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - CACHE_HOST=${CACHE_HOST}
+      - CACHE_PORT=${CACHE_PORT}
+      - CACHE_DB=${CACHE_DB}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
+      - SENTRY_URL=${SENTRY_URL}
+      - RABBIT_HOST=${RABBIT_HOST}
+      - RABBIT_PORT=${RABBIT_PORT}
+    restart: on-failure
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/feedcloud/Dockerfile
+    image: feedcloud
+    container_name: feedcloud_beat
+    hostname: celery_beat
+    command: celery -A feedcloud beat -l info --pidfile /tmp/celerybeat.pid
+    depends_on:
+      - rabbit
+      - celery_worker
+    environment:
+      - DJANGO_SETTINGS_MODULE=feedcloud.settings.production
+      - RABBIT_HOST=${RABBIT_HOST}
+      - RABBIT_PORT=${RABBIT_PORT}
+    restart: on-failure
+
+  nginx:
+    build: ./dockerfiles/nginx
+    container_name: feedcloud_nginx
+    volumes:
+      - ./static/:/static
+    ports:
+      - 8008:80
+    depends_on:
+      - feedcloud
+    restart: on-failure
+
+volumes:
+  static_volume:
+  postgresql-data:

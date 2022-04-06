@@ -1,0 +1,18 @@
+{
+  "feed": {
+    "title": "my sample site"
+  },
+  "entries": [
+    {
+      "title": "Test title 2",
+      "summary": "Some description about this feed",
+      "link": "sample url",
+      "published": "Wed, 22 Sep 2021 08:52:00 GMT"
+    },
+    {
+      "title": "Test title 1",
+      "summary": "Some description about first feed",
+      "link": "sample url",
+      "published": "Wed, 22 Sep 2021 06:45:58 GMT"
+    }
+]}
